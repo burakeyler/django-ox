@@ -13,6 +13,11 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser: CommandParser) -> None:
         parser.add_argument(
+            "--queue",
+            default=None,
+            help="Restrict pruning to one queue's task rows (default: all queues).",
+        )
+        parser.add_argument(
             "--older-than",
             default="7d",
             help=(
@@ -59,6 +64,12 @@ class Command(BaseCommand):
             statuses += [OxTask.Status.FAILED, OxTask.Status.LOST]
         prunable = OxTask.objects.filter(status__in=statuses, finished_at__lt=cutoff)
         label = "/".join(statuses)
+        queue: str | None = options["queue"]
+        if queue is not None:
+            # Narrows which rows are eligible; batching is unchanged. Schedule
+            # ticks belong to no queue, so they are pruned as without --queue.
+            prunable = prunable.filter(queue_name=queue)
+            label = f"{label} (queue {queue})"
 
         # Old schedule ticks are dispatch-log bookkeeping, but each
         # schedule's latest tick is the anchor the dispatcher measures

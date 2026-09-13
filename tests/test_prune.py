@@ -10,11 +10,12 @@ from django_ox.durations import parse_duration
 from django_ox.models import OxScheduleTick, OxTask
 
 
-def make_task(status, *, finished_days_ago=None):
+def make_task(status, *, finished_days_ago=None, queue_name="default"):
     now = timezone.now()
     return OxTask.objects.create(
         task_path="tests.tasks.add",
         backend_name="default",
+        queue_name=queue_name,
         enqueued_at=now - timedelta(days=400),
         status=status,
         finished_at=(
@@ -72,6 +73,44 @@ class TestPrune:
         assert OxTask.objects.filter(pk=old_failed.pk).exists()
         assert OxTask.objects.filter(pk=young_ok.pk).exists()
         assert "Deleted 1 SUCCESSFUL/DISCARDED task row(s)" in out
+
+    def test_queue_restricts_pruning_to_that_queue(self):
+        emails = make_task(
+            OxTask.Status.SUCCESSFUL, finished_days_ago=8, queue_name="emails"
+        )
+        reports = make_task(
+            OxTask.Status.SUCCESSFUL, finished_days_ago=8, queue_name="reports"
+        )
+
+        out = prune("--queue", "emails")
+
+        assert not OxTask.objects.filter(pk=emails.pk).exists()
+        assert OxTask.objects.filter(pk=reports.pk).exists()
+        assert "Deleted 1 SUCCESSFUL/DISCARDED (queue emails) task row(s)" in out
+
+    def test_queue_dry_run_counts_only_that_queue(self):
+        make_task(OxTask.Status.SUCCESSFUL, finished_days_ago=8, queue_name="emails")
+        make_task(OxTask.Status.SUCCESSFUL, finished_days_ago=8, queue_name="reports")
+        make_task(OxTask.Status.SUCCESSFUL, finished_days_ago=8, queue_name="reports")
+
+        out = prune("--queue", "reports", "--dry-run")
+
+        assert "Would delete 2 SUCCESSFUL/DISCARDED (queue reports) task row(s)" in out
+        assert OxTask.objects.count() == 3
+
+    def test_queue_keeps_batching(self):
+        for _ in range(5):
+            make_task(
+                OxTask.Status.SUCCESSFUL, finished_days_ago=8, queue_name="emails"
+            )
+        kept = make_task(
+            OxTask.Status.SUCCESSFUL, finished_days_ago=8, queue_name="reports"
+        )
+
+        out = prune("--queue", "emails", "--batch-size", "2")
+
+        assert "Deleted 5 SUCCESSFUL/DISCARDED (queue emails) task row(s)" in out
+        assert list(OxTask.objects.values_list("pk", flat=True)) == [kept.pk]
 
     def test_include_failed_prunes_failed_and_lost_too(self):
         make_task(OxTask.Status.SUCCESSFUL, finished_days_ago=8)

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `ox_prune --queue` restricts pruning to one queue's task rows, matching
+  `ox_health --queue`, so queues with different retention needs can each
+  be pruned with their own `--older-than`.
+
 ### Changed
 
 - `ox_health --max-age` and `--worker-timeout` accept the duration forms

@@ -161,6 +161,7 @@ python manage.py ox_prune --older-than 7d
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
+| `--queue` | all queues | Delete only this queue's task rows, so queues with different retention needs can be pruned separately. Same name and meaning as `ox_health --queue`. Schedule tick rows belong to no queue and are pruned as usual. |
 | `--older-than` | `7d` | Minimum time since the task finished. Accepts `7d`, `24h`, `90m`, `45s`, or a plain number of seconds. |
 | `--include-failed` | off | Also delete FAILED and LOST rows. By default they are kept, because they hold the per-attempt tracebacks and can be retried. |
 | `--batch-size` | `1000` | Rows per DELETE statement, so pruning a large table never takes a long lock or builds a giant IN clause. Must be at least 1. |
