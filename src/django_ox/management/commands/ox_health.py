@@ -1,3 +1,4 @@
+import json
 from datetime import timedelta
 from typing import Any
 
@@ -12,6 +13,10 @@ def _seconds(value: timedelta | None) -> str:
     return "none" if value is None else f"{value.total_seconds():.0f}s"
 
 
+def _total_seconds(value: timedelta | None) -> float | None:
+    return None if value is None else value.total_seconds()
+
+
 class Command(BaseCommand):
     help = (
         "Check queue health. Exits 0 when every enabled check passes, "
@@ -20,6 +25,16 @@ class Command(BaseCommand):
     )
 
     def add_arguments(self, parser: CommandParser) -> None:
+        parser.add_argument(
+            "--format",
+            choices=["text", "json"],
+            default="text",
+            help=(
+                "Output format. json prints one object with the same figures "
+                "on stdout, also when a check fails; the exit status is the "
+                "same either way (default: %(default)s)."
+            ),
+        )
         parser.add_argument(
             "--queue",
             default=None,
@@ -71,12 +86,16 @@ class Command(BaseCommand):
             raise CommandError("--worker-timeout must be a positive number of seconds.")
 
         queue: str | None = options["queue"]
+        as_json = options["format"] == "json"
         try:
             backlog = stats.ready_count(queue)
             oldest = stats.oldest_ready_age(queue)
             claim_age = stats.last_claim_age(queue)
         except DatabaseError as exc:
-            raise CommandError(f"Database unreachable: {exc}") from exc
+            reason = f"Database unreachable: {exc}"
+            if as_json:
+                self._write_json(queue, None, None, None, [reason])
+            raise CommandError(reason) from exc
 
         problems: list[str] = []
         if max_backlog is not None and backlog > max_backlog:
@@ -100,10 +119,37 @@ class Command(BaseCommand):
                     f"last task claim was {_seconds(claim_age)} ago, "
                     f"over --worker-timeout {worker_timeout:g}s"
                 )
+        if as_json:
+            # A monitoring agent wants the figures most when a check fails, so
+            # the object is printed before the non-zero exit, not instead of it.
+            self._write_json(queue, backlog, oldest, claim_age, problems)
         if problems:
             raise CommandError("; ".join(problems))
+        if as_json:
+            return
 
         self.stdout.write(
             f"OK: backlog={backlog} oldest_age={_seconds(oldest)} "
             f"last_claim_age={_seconds(claim_age)}"
+        )
+
+    def _write_json(
+        self,
+        queue: str | None,
+        backlog: int | None,
+        oldest: timedelta | None,
+        claim_age: timedelta | None,
+        problems: list[str],
+    ) -> None:
+        self.stdout.write(
+            json.dumps(
+                {
+                    "ok": not problems,
+                    "queue": queue,
+                    "backlog": backlog,
+                    "oldest_age_seconds": _total_seconds(oldest),
+                    "last_claim_age_seconds": _total_seconds(claim_age),
+                    "problems": problems,
+                }
+            )
         )
