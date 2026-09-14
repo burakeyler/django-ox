@@ -66,8 +66,10 @@ class Command(BaseCommand):
         label = "/".join(statuses)
         queue: str | None = options["queue"]
         if queue is not None:
-            # Narrows which rows are eligible; batching is unchanged. Schedule
-            # ticks belong to no queue, so they are pruned as without --queue.
+            # Task rows only. The tick log below is pruned for every schedule
+            # whatever --queue names: deleting a task clears its ticks' link
+            # to it, and an anchor never had one, so a tick's queue cannot be
+            # read reliably.
             prunable = prunable.filter(queue_name=queue)
             label = f"{label} (queue {queue})"
 

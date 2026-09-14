@@ -98,7 +98,7 @@ class TestPrune:
         assert "Would delete 2 SUCCESSFUL/DISCARDED (queue reports) task row(s)" in out
         assert OxTask.objects.count() == 3
 
-    def test_queue_keeps_batching(self):
+    def test_queue_keeps_batching(self, django_assert_num_queries):
         for _ in range(5):
             make_task(
                 OxTask.Status.SUCCESSFUL, finished_days_ago=8, queue_name="emails"
@@ -107,10 +107,30 @@ class TestPrune:
             OxTask.Status.SUCCESSFUL, finished_days_ago=8, queue_name="reports"
         )
 
-        out = prune("--queue", "emails", "--batch-size", "2")
+        # The same fifteen queries as test_deletes_in_batches: the queue is
+        # one more condition on each statement, not one more statement.
+        with django_assert_num_queries(15):
+            out = prune("--queue", "emails", "--batch-size", "2")
 
         assert "Deleted 5 SUCCESSFUL/DISCARDED (queue emails) task row(s)" in out
         assert list(OxTask.objects.values_list("pk", flat=True)) == [kept.pk]
+
+    def test_queue_still_prunes_every_schedules_old_ticks(self):
+        make_tick("a", scheduled_days_ago=30)
+        latest_a = make_tick("a", scheduled_days_ago=10)
+        make_tick("b", scheduled_days_ago=20)
+        latest_b = make_tick("b", scheduled_days_ago=9)
+
+        # No task row is in this queue. The tick log is pruned all the same:
+        # a tick's queue cannot be read reliably, so --queue does not narrow it.
+        out = prune("--queue", "emails")
+
+        assert set(OxScheduleTick.objects.values_list("pk", flat=True)) == {
+            latest_a.pk,
+            latest_b.pk,
+        }
+        assert "Deleted 0 SUCCESSFUL/DISCARDED (queue emails) task row(s)" in out
+        assert "Deleted 2 schedule tick row(s)" in out
 
     def test_include_failed_prunes_failed_and_lost_too(self):
         make_task(OxTask.Status.SUCCESSFUL, finished_days_ago=8)
