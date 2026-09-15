@@ -118,6 +118,20 @@ class TestHealth:
         assert report["backlog"] is None
         assert report["problems"] == ["Database unreachable: connection refused"]
 
+    def test_json_rejects_a_bad_threshold_but_still_prints_the_object(self):
+        report, error = health_json("--max-backlog=-1")
+
+        assert isinstance(error, CommandError)
+        assert report == {
+            "ok": False,
+            "queue": None,
+            "backlog": None,
+            "oldest_age_seconds": None,
+            "last_claim_age_seconds": None,
+            "problems": ["--max-backlog must be zero or a positive integer."],
+        }
+        assert str(error) == "--max-backlog must be zero or a positive integer."
+
     def test_database_unreachable_fails_with_reason(self, monkeypatch):
         def boom(queue_name=None):
             raise DatabaseError("connection refused")

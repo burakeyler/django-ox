@@ -78,15 +78,21 @@ class Command(BaseCommand):
         max_backlog: int | None = options["max_backlog"]
         max_age: float | None = options["max_age"]
         worker_timeout: float | None = options["worker_timeout"]
-        if max_backlog is not None and max_backlog < 0:
-            raise CommandError("--max-backlog must be zero or a positive integer.")
-        if max_age is not None and max_age <= 0:
-            raise CommandError("--max-age must be a positive number of seconds.")
-        if worker_timeout is not None and worker_timeout <= 0:
-            raise CommandError("--worker-timeout must be a positive number of seconds.")
-
         queue: str | None = options["queue"]
         as_json = options["format"] == "json"
+
+        def _invalid(reason: str) -> None:
+            if as_json:
+                self._write_json(queue, None, None, None, [reason])
+            raise CommandError(reason)
+
+        if max_backlog is not None and max_backlog < 0:
+            _invalid("--max-backlog must be zero or a positive integer.")
+        if max_age is not None and max_age <= 0:
+            _invalid("--max-age must be a positive number of seconds.")
+        if worker_timeout is not None and worker_timeout <= 0:
+            _invalid("--worker-timeout must be a positive number of seconds.")
+
         try:
             backlog = stats.ready_count(queue)
             oldest = stats.oldest_ready_age(queue)
