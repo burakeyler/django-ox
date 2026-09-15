@@ -1,6 +1,6 @@
 import json
 from datetime import timedelta
-from typing import Any
+from typing import Any, NoReturn
 
 from django.core.management.base import BaseCommand, CommandError, CommandParser
 from django.db import DatabaseError
@@ -81,7 +81,7 @@ class Command(BaseCommand):
         queue: str | None = options["queue"]
         as_json = options["format"] == "json"
 
-        def _invalid(reason: str) -> None:
+        def _invalid(reason: str) -> NoReturn:
             if as_json:
                 self._write_json(queue, None, None, None, [reason])
             raise CommandError(reason)
